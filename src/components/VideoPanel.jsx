@@ -1,5 +1,6 @@
 import {
   FiCamera,
+  FiCode,
   FiEdit3,
   FiMic,
   FiMicOff,
@@ -10,6 +11,7 @@ import {
 } from "react-icons/fi";
 import { useEffect, useRef } from "react";
 import WhiteboardPanel from "./WhiteboardPanel";
+import CodeEditorPanel from "./CodeEditorPanel";
 
 function StreamTile({
   stream,
@@ -66,6 +68,8 @@ export default function VideoPanel({
   videoEnabled,
   whiteboardVisible,
   whiteboardPending,
+  codeEditorVisible,
+  codeEditorPending,
   isOwner,
   selectedMainStream,
   selectedMainId,
@@ -74,29 +78,39 @@ export default function VideoPanel({
   onToggleVideo,
   onShareScreen,
   onWhiteboardClick,
-  whiteboardProps
+  onCodeEditorClick,
+  whiteboardProps,
+  codeEditorProps
 }) {
   const mainLabel = selectedMainStream?.label || currentUser?.fullName || "You";
   const showingLocal = selectedMainStream?.type !== "remote";
+  const sharedSurfaceLabel = codeEditorVisible
+    ? "Live Code Editor"
+    : whiteboardVisible
+      ? "Shared Whiteboard"
+      : "Live Preview";
+  const sharedSurfaceStatus = codeEditorVisible
+    ? "Code editor live"
+    : whiteboardVisible
+      ? "Whiteboard live"
+      : remoteStreams.length
+        ? `${remoteStreams.length + 1} live`
+        : "Waiting for participants";
 
   return (
     <div className="video-panel">
       <div className="video-topbar">
         <div>
-          <p className="eyebrow">{whiteboardVisible ? "Shared Whiteboard" : "Live Preview"}</p>
+          <p className="eyebrow">{sharedSurfaceLabel}</p>
           <h2>{meeting?.title || "CodeSYNC Arena room"}</h2>
         </div>
-        <span className="recording-pill">
-          {whiteboardVisible
-            ? "Whiteboard live"
-            : remoteStreams.length
-              ? `${remoteStreams.length + 1} live`
-              : "Waiting for participants"}
-        </span>
+        <span className="recording-pill">{sharedSurfaceStatus}</span>
       </div>
 
       <div className="main-video">
-        {whiteboardVisible ? (
+        {codeEditorVisible ? (
+          <CodeEditorPanel embedded {...codeEditorProps} />
+        ) : whiteboardVisible ? (
           <WhiteboardPanel embedded {...whiteboardProps} />
         ) : (
           <>
@@ -153,6 +167,24 @@ export default function VideoPanel({
           onClick={onWhiteboardClick}
         >
           <FiEdit3 />
+        </button>
+        <button
+          type="button"
+          className={`control-button ${codeEditorVisible ? "active-tool" : ""} ${codeEditorPending ? "muted" : ""}`.trim()}
+          title={
+            isOwner
+              ? codeEditorVisible
+                ? "Hide code editor"
+                : "Show code editor"
+              : codeEditorVisible
+                ? "Code editor is live"
+                : codeEditorPending
+                  ? "Request sent to owner"
+                  : "Request code editor access"
+          }
+          onClick={onCodeEditorClick}
+        >
+          <FiCode />
         </button>
         <button type="button" className="control-button" title="Share screen" onClick={onShareScreen}>
           <FiMonitor />

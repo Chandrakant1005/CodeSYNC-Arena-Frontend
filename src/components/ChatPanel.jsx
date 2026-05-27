@@ -6,7 +6,8 @@ export default function ChatPanel({
   setDraftMessage,
   onSend,
   notifications,
-  onApproveWhiteboardRequest
+  onApproveWhiteboardRequest,
+  onApproveCodeEditorRequest
 }) {
   const messagesRef = useRef(null);
 
@@ -39,6 +40,15 @@ export default function ChatPanel({
                     onClick={() => onApproveWhiteboardRequest(notification.requesterId)}
                   >
                     Allow whiteboard
+                  </button>
+                ) : null}
+                {notification.type === "code-editor-request" ? (
+                  <button
+                    type="button"
+                    className="notice-action"
+                    onClick={() => onApproveCodeEditorRequest(notification.requesterId)}
+                  >
+                    Allow editor
                   </button>
                 ) : null}
               </div>

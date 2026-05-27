@@ -32,6 +32,15 @@ export default function MeetingRoomPage() {
   const [whiteboardRequestPending, setWhiteboardRequestPending] = useState(false);
   const [whiteboardStrokes, setWhiteboardStrokes] = useState([]);
   const [canGuestsDraw, setCanGuestsDraw] = useState(false);
+  const [codeEditorVisible, setCodeEditorVisible] = useState(false);
+  const [codeEditorRequestPending, setCodeEditorRequestPending] = useState(false);
+  const [codeEditorContent, setCodeEditorContent] = useState("");
+  const [codeEditorLanguage, setCodeEditorLanguage] = useState("javascript");
+  const [canGuestsEditCode, setCanGuestsEditCode] = useState(false);
+  const [codeEditorTestCases, setCodeEditorTestCases] = useState("[]");
+  const [codeEditorValidationScript, setCodeEditorValidationScript] = useState("");
+  const [codeEditorUpdatedAt, setCodeEditorUpdatedAt] = useState(null);
+  const [codeEditorUpdatedBy, setCodeEditorUpdatedBy] = useState(null);
   const [selectedMainId, setSelectedMainId] = useState("auto");
   const [copyFeedback, setCopyFeedback] = useState("Copy join URL");
   const peerConnectionsRef = useRef(new Map());
@@ -40,6 +49,7 @@ export default function MeetingRoomPage() {
   const joinedRoomRef = useRef(false);
   const isOwner = meeting?.owner.id === user?.id;
   const canCurrentUserDraw = isOwner || canGuestsDraw;
+  const canCurrentUserEditCode = isOwner || canGuestsEditCode;
   const participantTiles = useMemo(() => {
     const remoteStreamMap = new Map(remoteStreams.map((item) => [item.socketId, item.stream]));
 
@@ -290,6 +300,20 @@ export default function MeetingRoomPage() {
         return;
       }
 
+      if (prompt.type === "code-editor-request") {
+        setNotifications((current) => [
+          {
+            id: `code-editor-request-${prompt.member.id}-${prompt.createdAt}`,
+            type: "code-editor-request",
+            title: "Code editor access request",
+            message: `${prompt.member.fullName} requested to open the live code editor for this meeting.`,
+            requesterId: prompt.member.id
+          },
+          ...current
+        ]);
+        return;
+      }
+
       setNotifications((current) => [
         {
           id: `${prompt.type}-${prompt.member.id}-${prompt.createdAt}`,
@@ -427,6 +451,90 @@ export default function MeetingRoomPage() {
       );
     };
 
+    const handleCodeEditorInit = ({
+      visible,
+      canGuestsEdit: nextCanGuestsEdit,
+      language,
+      content,
+      testCases,
+      validationScript,
+      updatedAt,
+      updatedBy
+    }) => {
+      setCodeEditorVisible(Boolean(visible));
+      setCanGuestsEditCode(Boolean(nextCanGuestsEdit));
+      setCodeEditorLanguage(language || "javascript");
+      setCodeEditorContent(typeof content === "string" ? content : "");
+      setCodeEditorTestCases(typeof testCases === "string" ? testCases : "[]");
+      setCodeEditorValidationScript(
+        typeof validationScript === "string" ? validationScript : ""
+      );
+      setCodeEditorUpdatedAt(updatedAt || null);
+      setCodeEditorUpdatedBy(updatedBy || null);
+    };
+
+    const handleCodeEditorVisibility = ({ visible, approvedRequesterId }) => {
+      setCodeEditorVisible(Boolean(visible));
+      if (!visible) {
+        setCodeEditorRequestPending(false);
+        return;
+      }
+
+      if (approvedRequesterId === user.id || isOwner) {
+        setCodeEditorRequestPending(false);
+      }
+    };
+
+    const handleCodeEditorPermission = ({ canGuestsEdit: nextCanGuestsEdit }) => {
+      setCanGuestsEditCode(Boolean(nextCanGuestsEdit));
+    };
+
+    const handleCodeEditorUpdate = ({
+      content,
+      language,
+      testCases,
+      validationScript,
+      updatedAt,
+      updatedBy
+    }) => {
+      if (typeof content === "string") {
+        setCodeEditorContent(content);
+      }
+
+      if (language) {
+        setCodeEditorLanguage(language);
+      }
+
+      if (typeof testCases === "string") {
+        setCodeEditorTestCases(testCases);
+      }
+
+      if (typeof validationScript === "string") {
+        setCodeEditorValidationScript(validationScript);
+      }
+
+      setCodeEditorUpdatedAt(updatedAt || new Date().toISOString());
+      setCodeEditorUpdatedBy(updatedBy || null);
+    };
+
+    const handleCodeEditorTestConfig = ({
+      testCases,
+      validationScript,
+      updatedAt,
+      updatedBy
+    }) => {
+      if (typeof testCases === "string") {
+        setCodeEditorTestCases(testCases);
+      }
+
+      if (typeof validationScript === "string") {
+        setCodeEditorValidationScript(validationScript);
+      }
+
+      setCodeEditorUpdatedAt(updatedAt || new Date().toISOString());
+      setCodeEditorUpdatedBy(updatedBy || null);
+    };
+
     socket.on("meeting:roster", handleRoster);
     socket.on("meeting:chat", handleChat);
     socket.on("meeting:ownerPrompt", handleOwnerPrompt);
@@ -443,6 +551,11 @@ export default function MeetingRoomPage() {
     socket.on("whiteboard:stroke-start", handleWhiteboardStrokeStart);
     socket.on("whiteboard:stroke-point", handleWhiteboardStrokePoint);
     socket.on("whiteboard:stroke-end", handleWhiteboardStrokeEnd);
+    socket.on("code-editor:init", handleCodeEditorInit);
+    socket.on("code-editor:visibility", handleCodeEditorVisibility);
+    socket.on("code-editor:permission", handleCodeEditorPermission);
+    socket.on("code-editor:update", handleCodeEditorUpdate);
+    socket.on("code-editor:test-config", handleCodeEditorTestConfig);
 
     if (!joinedRoomRef.current) {
       socket.emit("meeting:join", { identifier: meeting.roomSlug, user, sessionId });
@@ -468,6 +581,11 @@ export default function MeetingRoomPage() {
       socket.off("whiteboard:stroke-start", handleWhiteboardStrokeStart);
       socket.off("whiteboard:stroke-point", handleWhiteboardStrokePoint);
       socket.off("whiteboard:stroke-end", handleWhiteboardStrokeEnd);
+      socket.off("code-editor:init", handleCodeEditorInit);
+      socket.off("code-editor:visibility", handleCodeEditorVisibility);
+      socket.off("code-editor:permission", handleCodeEditorPermission);
+      socket.off("code-editor:update", handleCodeEditorUpdate);
+      socket.off("code-editor:test-config", handleCodeEditorTestConfig);
       peerConnectionsRef.current.forEach((connection) => connection.close());
       peerConnectionsRef.current.clear();
       pendingIceCandidatesRef.current.clear();
@@ -548,6 +666,12 @@ export default function MeetingRoomPage() {
     setCanGuestsDraw(nextValue);
   }
 
+  function handleCodeEditorPermissionChange(nextValue) {
+    const socket = getSocket();
+    socket.emit("code-editor:permission", { canGuestsEdit: nextValue });
+    setCanGuestsEditCode(nextValue);
+  }
+
   function handleWhiteboardToggle() {
     const socket = getSocket();
 
@@ -574,9 +698,39 @@ export default function MeetingRoomPage() {
     socket.emit("whiteboard:request-open");
   }
 
+  function handleCodeEditorToggle() {
+    const socket = getSocket();
+
+    if (isOwner) {
+      const nextVisible = !codeEditorVisible;
+      setCodeEditorVisible(nextVisible);
+      if (nextVisible) {
+        setWhiteboardVisible(false);
+      }
+      socket.emit("code-editor:toggle-visible", { visible: nextVisible });
+      return;
+    }
+
+    if (codeEditorVisible || codeEditorRequestPending) {
+      return;
+    }
+
+    setCodeEditorRequestPending(true);
+    setNotifications((current) => [
+      {
+        id: `code-editor-requested-${Date.now()}`,
+        title: "Code editor request sent",
+        message: "The meeting owner has been asked to open the live code editor."
+      },
+      ...current
+    ]);
+    socket.emit("code-editor:request-open");
+  }
+
   function handleApproveWhiteboardRequest(requesterId) {
     const socket = getSocket();
     setWhiteboardVisible(true);
+    setCodeEditorVisible(false);
     setNotifications((current) =>
       current.filter(
         (notification) =>
@@ -584,6 +738,19 @@ export default function MeetingRoomPage() {
       )
     );
     socket.emit("whiteboard:approve-request", { requesterId });
+  }
+
+  function handleApproveCodeEditorRequest(requesterId) {
+    const socket = getSocket();
+    setCodeEditorVisible(true);
+    setWhiteboardVisible(false);
+    setNotifications((current) =>
+      current.filter(
+        (notification) =>
+          !(notification.type === "code-editor-request" && notification.requesterId === requesterId)
+      )
+    );
+    socket.emit("code-editor:approve-request", { requesterId });
   }
 
   useEffect(() => {
@@ -626,6 +793,62 @@ export default function MeetingRoomPage() {
       )
     );
     socket.emit("whiteboard:stroke-end", { strokeId });
+  }
+
+  function handleCodeEditorUpdate(nextContent, nextLanguage = codeEditorLanguage) {
+    const socket = getSocket();
+    const timestamp = new Date().toISOString();
+    setCodeEditorContent(nextContent);
+    setCodeEditorLanguage(nextLanguage);
+    setCodeEditorUpdatedAt(timestamp);
+    setCodeEditorUpdatedBy(user?.fullName || null);
+    socket.emit("code-editor:update", {
+      content: nextContent,
+      language: nextLanguage
+    });
+  }
+
+  function handleCodeEditorContentChange(nextContent) {
+    handleCodeEditorUpdate(nextContent, codeEditorLanguage);
+  }
+
+  function handleCodeEditorLanguageChange(nextLanguage) {
+    handleCodeEditorUpdate(codeEditorContent, nextLanguage);
+  }
+
+  function handleCodeEditorReset() {
+    const socket = getSocket();
+    socket.emit("code-editor:reset");
+  }
+
+  function handleCodeEditorTestCasesChange(nextTestCases) {
+    if (!isOwner) {
+      return;
+    }
+
+    const socket = getSocket();
+    const timestamp = new Date().toISOString();
+    setCodeEditorTestCases(nextTestCases);
+    setCodeEditorUpdatedAt(timestamp);
+    setCodeEditorUpdatedBy(user?.fullName || null);
+    socket.emit("code-editor:test-config", {
+      testCases: nextTestCases
+    });
+  }
+
+  function handleCodeEditorValidationScriptChange(nextValidationScript) {
+    if (!isOwner) {
+      return;
+    }
+
+    const socket = getSocket();
+    const timestamp = new Date().toISOString();
+    setCodeEditorValidationScript(nextValidationScript);
+    setCodeEditorUpdatedAt(timestamp);
+    setCodeEditorUpdatedBy(user?.fullName || null);
+    socket.emit("code-editor:test-config", {
+      validationScript: nextValidationScript
+    });
   }
 
   function handleToggleAudio() {
@@ -778,6 +1001,8 @@ export default function MeetingRoomPage() {
                 videoEnabled={videoEnabled}
                 whiteboardVisible={whiteboardVisible}
                 whiteboardPending={whiteboardRequestPending}
+                codeEditorVisible={codeEditorVisible}
+                codeEditorPending={codeEditorRequestPending}
                 isOwner={isOwner}
                 selectedMainStream={selectedMainStream}
                 selectedMainId={selectedMainId === "auto" ? selectedMainStream.id : selectedMainId}
@@ -786,6 +1011,7 @@ export default function MeetingRoomPage() {
                 onToggleVideo={handleToggleVideo}
                 onShareScreen={handleShareScreen}
                 onWhiteboardClick={handleWhiteboardToggle}
+                onCodeEditorClick={handleCodeEditorToggle}
                 whiteboardProps={{
                   strokes: whiteboardStrokes,
                   canCurrentUserDraw,
@@ -796,6 +1022,23 @@ export default function MeetingRoomPage() {
                   onStartStroke: handleWhiteboardStrokeStart,
                   onAppendStrokePoint: handleWhiteboardStrokePoint,
                   onEndStroke: handleWhiteboardStrokeEnd
+                }}
+                codeEditorProps={{
+                  content: codeEditorContent,
+                  language: codeEditorLanguage,
+                  testCases: codeEditorTestCases,
+                  validationScript: codeEditorValidationScript,
+                  isOwner,
+                  canCurrentUserEdit: canCurrentUserEditCode,
+                  canGuestsEdit: canGuestsEditCode,
+                  updatedAt: codeEditorUpdatedAt,
+                  updatedBy: codeEditorUpdatedBy,
+                  onToggleGuestsEditing: handleCodeEditorPermissionChange,
+                  onResetEditor: handleCodeEditorReset,
+                  onChangeLanguage: handleCodeEditorLanguageChange,
+                  onChangeContent: handleCodeEditorContentChange,
+                  onChangeTestCases: handleCodeEditorTestCasesChange,
+                  onChangeValidationScript: handleCodeEditorValidationScriptChange
                 }}
               />
             </div>
@@ -809,6 +1052,7 @@ export default function MeetingRoomPage() {
                 onSend={handleSendMessage}
                 notifications={notifications}
                 onApproveWhiteboardRequest={handleApproveWhiteboardRequest}
+                onApproveCodeEditorRequest={handleApproveCodeEditorRequest}
               />
             </div>
           </div>
